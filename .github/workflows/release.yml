@@ -1,8 +1,9 @@
 name: Build Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
 
 jobs:
   build-windows:
@@ -19,16 +20,37 @@ jobs:
           python-version: "3.11"
 
       - name: Install build tool
-        run: python -m pip install --upgrade pip pyinstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+
+      - name: Run tests
+        run: python -m unittest discover -s tests
 
       - name: Build exe
         run: pyinstaller --noconfirm --clean --onefile --windowed --name "谷歌验证器" main.py
 
       - name: Package exe
         shell: pwsh
-        run: Compress-Archive -Path 'dist/谷歌验证器.exe' -DestinationPath 'dist/gugeyanzhengqi-windows-amd64.zip'
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/package
+          Copy-Item 'dist/谷歌验证器.exe' 'dist/package/谷歌验证器.exe'
+          Copy-Item 'LICENSE' 'dist/package/LICENSE'
+          Copy-Item 'README.md' 'dist/package/README.md'
+          Compress-Archive -Path 'dist/package/*' -DestinationPath 'dist/gugeyanzhengqi-windows-amd64.zip'
+          $hash = Get-FileHash 'dist/gugeyanzhengqi-windows-amd64.zip' -Algorithm SHA256
+          "$($hash.Hash.ToLower())  gugeyanzhengqi-windows-amd64.zip" | Set-Content -Encoding ascii 'dist/SHA256SUMS.txt'
 
-      - name: Upload release asset
+      - name: Publish release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload ${{ github.event.release.tag_name }} 'dist/gugeyanzhengqi-windows-amd64.zip' --clobber
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $assets = @('dist/gugeyanzhengqi-windows-amd64.zip', 'dist/SHA256SUMS.txt')
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag @assets --clobber
+          } else {
+            gh release create $tag @assets --title $tag --generate-notes
+          }

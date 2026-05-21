@@ -1,0 +1,132 @@
+#!/bin/bash
+set -u
+
+MACOS_DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_BUNDLE_DIR="$(cd "$MACOS_DIR/../.." && pwd)"
+SCRIPT_DIR="$(cd "$APP_BUNDLE_DIR/.." && pwd)"
+
+show_alert() {
+  local title="$1"
+  local message="$2"
+  local escaped_title
+  local escaped_message
+  escaped_title="$(printf '%s' "$title" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  escaped_message="$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  /usr/bin/osascript -e "display alert \"$escaped_title\" message \"$escaped_message\" as critical" >/dev/null 2>&1 || true
+}
+
+if [ ! -f "$SCRIPT_DIR/main.py" ]; then
+  show_alert "谷歌验证器启动失败" "没有在启动器旁边找到 main.py。请把“谷歌验证器.app”放在项目目录中运行。"
+  exit 1
+fi
+
+cd "$SCRIPT_DIR" || exit 1
+
+LOG_DIR="$SCRIPT_DIR/data"
+if ! mkdir -p "$LOG_DIR" >/dev/null 2>&1; then
+  LOG_DIR="/tmp"
+fi
+LOG_FILE="$LOG_DIR/no_terminal_launcher.log"
+PY_CACHE_FILE="$SCRIPT_DIR/data/python_launcher_path.txt"
+
+exec >>"$LOG_FILE" 2>&1
+
+echo
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] launching from $SCRIPT_DIR"
+
+CANDIDATES=(
+  "$SCRIPT_DIR/.venv/bin/python"
+  "$SCRIPT_DIR/.venv/bin/python3"
+  "$SCRIPT_DIR/.venv/bin/python3.11"
+  "/opt/homebrew/bin/python3.11"
+  "/opt/homebrew/bin/python3.12"
+  "/opt/homebrew/bin/python3.13"
+  "/opt/homebrew/bin/python3"
+  "python3"
+)
+
+probe_python() {
+  local py="$1"
+  "$py" - <<'PY' >/dev/null 2>&1
+import tkinter
+import main
+print("ok")
+PY
+}
+
+is_system_python3() {
+  local py="$1"
+  local exec_path
+  local real_path
+  exec_path="$("$py" - <<'PY' 2>/dev/null
+import sys
+print(sys.executable)
+PY
+)" || return 1
+  real_path="$("$py" - <<'PY' 2>/dev/null
+import os, sys
+print(os.path.realpath(sys.executable))
+PY
+)" || return 1
+  case "$exec_path:$real_path" in
+    *"/usr/bin/python3"*|*"/Library/Developer/CommandLineTools/"*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+ALL_CANDIDATES=()
+if [ -f "$PY_CACHE_FILE" ]; then
+  cached_py="$(cat "$PY_CACHE_FILE" 2>/dev/null || true)"
+  if [ -n "$cached_py" ]; then
+    ALL_CANDIDATES+=("$cached_py")
+  fi
+fi
+ALL_CANDIDATES+=("${CANDIDATES[@]}")
+
+VALID_BINS=()
+seen_bins=""
+for p in "${ALL_CANDIDATES[@]}"; do
+  if ! command -v "$p" >/dev/null 2>&1; then
+    continue
+  fi
+  py_bin="$(command -v "$p")"
+  case "|$seen_bins|" in
+    *"|$py_bin|"*)
+      continue
+      ;;
+  esac
+  seen_bins="${seen_bins}|${py_bin}"
+
+  if is_system_python3 "$py_bin"; then
+    echo "skip system python: $py_bin"
+    continue
+  fi
+  if probe_python "$py_bin"; then
+    VALID_BINS+=("$py_bin")
+  else
+    echo "probe failed: $py_bin"
+  fi
+done
+
+if [ ${#VALID_BINS[@]} -eq 0 ]; then
+  show_alert "谷歌验证器启动失败" "未找到可用 Python 运行环境。需要一个能导入 tkinter 的 Python；已自动跳过 macOS 系统 Python。日志：$LOG_FILE"
+  exit 1
+fi
+
+for PYTHON_BIN in "${VALID_BINS[@]}"; do
+  echo "using python: $PYTHON_BIN"
+  "$PYTHON_BIN" "$SCRIPT_DIR/main.py"
+  EXIT_CODE=$?
+  if [ "$EXIT_CODE" -eq 0 ]; then
+    mkdir -p "$SCRIPT_DIR/data" >/dev/null 2>&1 || true
+    echo "$PYTHON_BIN" >"$PY_CACHE_FILE" 2>/dev/null || true
+    echo "app exited normally"
+    exit 0
+  fi
+  echo "python exited with $EXIT_CODE, trying next candidate"
+done
+
+show_alert "谷歌验证器异常退出" "所有可用 Python 均启动失败。日志：$LOG_FILE"
+exit 1

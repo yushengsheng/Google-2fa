@@ -7,6 +7,7 @@ import base64
 import hashlib
 import hmac
 import json
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -16,7 +17,13 @@ from tkinter import messagebox
 from urllib.parse import parse_qs, unquote, urlparse
 
 
-APP_DIR = Path(__file__).resolve().parent
+def get_app_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+APP_DIR = get_app_dir()
 LEGACY_DATA_FILE = APP_DIR / "accounts.json"
 INPUT_FILE = APP_DIR / "secrets.txt"
 WINDOW_TITLE = "谷歌验证器"
@@ -255,6 +262,7 @@ def migrate_legacy_input() -> str:
 
 
 def save_input_text(raw_text: str) -> None:
+    INPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     INPUT_FILE.write_text(raw_text, encoding="utf-8")
 
 

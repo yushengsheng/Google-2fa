@@ -73,6 +73,13 @@ class TotpTests(unittest.TestCase):
         self.assertEqual(main.format_code("12345"), "12345")
 
 
+class VersionTests(unittest.TestCase):
+    def test_version_is_available_for_ui_label(self) -> None:
+        self.assertRegex(main.APP_VERSION, r"^v\d+\.\d+\.\d+$")
+        self.assertEqual(main.WINDOW_TITLE, main.APP_NAME)
+        self.assertEqual(f"版本 {main.APP_VERSION}", "版本 v1.0.4")
+
+
 class ImportParsingTests(unittest.TestCase):
     def test_parse_plain_csv_pipe_tab_and_otpauth(self) -> None:
         raw_text = "\n".join(

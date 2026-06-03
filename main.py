@@ -26,7 +26,9 @@ def get_app_dir() -> Path:
 APP_DIR = get_app_dir()
 LEGACY_DATA_FILE = APP_DIR / "accounts.json"
 INPUT_FILE = APP_DIR / "secrets.txt"
-WINDOW_TITLE = "谷歌验证器"
+APP_NAME = "谷歌验证器"
+APP_VERSION = "v1.0.4"
+WINDOW_TITLE = APP_NAME
 SUPPORTED_ALGORITHMS = {
     "SHA1": hashlib.sha1,
     "SHA256": hashlib.sha256,
@@ -337,6 +339,7 @@ class AuthenticatorApp(tk.Tk):
         left.grid(row=0, column=0, sticky="nsew")
         left.grid_columnconfigure(0, weight=1)
         left.grid_rowconfigure(1, weight=1)
+        left.grid_rowconfigure(2, weight=0)
 
         input_card = self._make_card(left, height=62)
         input_card.grid(row=0, column=0, sticky="ew")
@@ -385,6 +388,18 @@ class AuthenticatorApp(tk.Tk):
 
         self.empty_label = tk.Frame(self.result_body, bg="white", height=1)
         self.empty_label.pack(fill="both", expand=True)
+
+        self.version_label = tk.Label(
+            left,
+            text=f"版本 {APP_VERSION}",
+            bg="#ECECEC",
+            fg="#7A7A7A",
+            font=("Menlo", 8),
+            anchor="w",
+            padx=2,
+            pady=1,
+        )
+        self.version_label.grid(row=2, column=0, sticky="ew", pady=(2, 0))
 
         self.input_menu = tk.Menu(self, tearoff=0)
         self.input_menu.add_command(label="粘贴", command=self._paste_from_menu)
